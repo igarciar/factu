@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{#-
+  Portada (Req. 1.1, 16.1-16.19).
+  Variables:
+    summary -- ExpenseSummary (previous/current: YearSummary; months: 12 MonthlyComparison)
+    recent  -- RecentPage (items, page, page_size, has_more), ver _recent_table.html
+  Todos los importes con el filtro |eur (16.18) y todos los valores escapados (14.7).
+-#}
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<h1>Mis facturas</h1>
+
+<p class="actions">
+  <a class="button button--primary-large" href="/upload">Subir factura</a>
+</p>
+
+<section aria-labelledby="summary-title">
+  <h2 id="summary-title">Resumen de gastos</h2>
+
+  <div class="cards">
+    <div class="card">
+      <p class="label">Gastos {{ summary.previous.year }}</p>
+      <p class="card__value amount" data-total="previous">{{ summary.previous.total | eur }}</p>
+    </div>
+    <div class="card">
+      <p class="label">Gastos {{ summary.current.year }}</p>
+      <p class="card__value amount" data-total="current">{{ summary.current.total | eur }}</p>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table class="summary-table">
+      <caption>Gastos por mes de {{ summary.previous.year }} y {{ summary.current.year }}</caption>
+      <thead>
+        <tr>
+          <th scope="col">Mes</th>
+          <th scope="col" class="num">{{ summary.previous.year }}</th>
+          <th scope="col" class="num">{{ summary.current.year }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for month in summary.months %}
+        <tr>
+          <th scope="row">{{ month.name }}</th>
+          <td class="num">{{ month.previous | eur }}</td>
+          <td class="num">{{ month.current | eur }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="recent-title">
+  <h2 id="recent-title">Últimas facturas</h2>
+  {% include "_recent_table.html" %}
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+# ⚠️ Sin autenticación: cualquier dispositivo de la LAN tiene acceso completo a la aplicación.
+# NO redirigir este puerto desde el router ni exponerlo a Internet (Req. 14.1).
+# Para limitar la escucha a una interfaz concreta del servidor, define BIND_ADDRESS
+# (por ejemplo, BIND_ADDRESS=192.168.1.10). No se usa network_mode: host.
+services:
+  invoice-reader:
+    build: .
+    image: invoice-reader
+    restart: unless-stopped
+    ports:
+      # <IP del servidor>:<puerto publicado>:<puerto interno de Gunicorn> (Req. 12.1, 12.3)
+      - "${BIND_ADDRESS:-0.0.0.0}:${INVOICE_HOST_PORT:-8000}:${INVOICE_PORT:-8000}"
+    environment:
+      INVOICE_PORT: "${INVOICE_PORT:-8000}"
+      INVOICE_MAX_UPLOAD_BYTES: "${INVOICE_MAX_UPLOAD_BYTES:-10485760}"
+    volumes:
+      # Almacenamiento persistente (Req. 11.4)
+      - invoice-db:/data/db
+      - invoice-images:/data/images
+
+volumes:
+  invoice-db:
+  invoice-images:

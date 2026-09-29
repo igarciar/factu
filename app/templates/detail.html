@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{#-
+  Detalle de un Apunte (Req. 6.6, 8.5).
+  Variables:
+    entry          -- Entry
+    saved          -- True tras guardar (?saved=1): muestra saved_message en la región role="alert"
+    saved_message  -- texto del mensaje de guardado
+    tax_id_warning -- True si el NIF/CIF guardado no supera la validación (aviso, Req. 5.6)
+  La imagen se sirve desde /entries/<id>/image (blueprint images). Todo se escapa (Req. 14.7).
+-#}
+{%- set invoice_date_text = entry.invoice_date.strftime('%d/%m/%Y') %}
+{% block title %}Apunte del {{ invoice_date_text }}{% endblock %}
+
+{% block alerts %}
+{%- if saved %}
+<p class="alert alert--success">{{ saved_message }}</p>
+{%- endif %}
+{{- super() }}
+{% endblock %}
+
+{% block content %}
+<h1>Apunte del {{ invoice_date_text }}{% if entry.supplier %} · {{ entry.supplier }}{% endif %}</h1>
+
+<div class="actions">
+  <a class="button" href="{{ url_for('entries.edit', entry_id=entry.id) }}">Editar</a>
+  <a class="button button--danger" href="{{ url_for('entries.delete', entry_id=entry.id) }}">Eliminar</a>
+  <a class="button button--secondary" href="{{ url_for('entries.list_entries') }}">Volver al listado</a>
+</div>
+
+<div class="two-columns">
+  <section aria-labelledby="image-title">
+    <h2 id="image-title">Imagen de la factura</h2>
+    <a href="/entries/{{ entry.id }}/image">
+      <img src="/entries/{{ entry.id }}/image" alt="Imagen de la factura{% if entry.supplier %} de {{ entry.supplier }}{% endif %} del {{ invoice_date_text }}">
+    </a>
+    <p class="field-hint"><a href="/entries/{{ entry.id }}/image">Abrir la imagen a tamaño completo</a></p>
+  </section>
+
+  <section aria-labelledby="fields-title">
+    <h2 id="fields-title">Datos del apunte</h2>
+    <dl class="entry-fields">
+      <dt>Fecha de factura</dt>
+      <dd><time datetime="{{ entry.invoice_date.isoformat() }}">{{ invoice_date_text }}</time></dd>
+      <dt>Tipo</dt>
+      <dd>{{ entry.entry_type | capitalize }}</dd>
+      <dt>Proveedor/emisor</dt>
+      <dd>{{ entry.supplier or "—" }}</dd>
+      <dt>NIF/CIF</dt>
+      <dd>{{ entry.tax_id or "—" }}{% if tax_id_warning %} <span class="field-error">El NIF/CIF no parece válido (formato o dígito de control).</span>{% endif %}</dd>
+      <dt>Número de factura</dt>
+      <dd>{{ entry.invoice_number or "—" }}</dd>
+      <dt>Concepto</dt>
+      <dd>{{ entry.concept or "—" }}</dd>
+      <dt>Categoría</dt>
+      <dd>{{ entry.category or "—" }}</dd>
+      <dt>Base imponible</dt>
+      <dd class="amount">{{ entry.base_amount | eur if entry.base_amount is not none else "—" }}</dd>
+      <dt>IVA</dt>
+      <dd class="amount">{{ entry.vat_amount | eur if entry.vat_amount is not none else "—" }}</dd>
+      <dt>Total</dt>
+      <dd class="amount">{{ entry.total | eur }}</dd>
+      <dt>Fecha de alta</dt>
+      <dd><time datetime="{{ entry.created_at.isoformat() }}">{{ entry.created_at.strftime('%d/%m/%Y %H:%M') }} (UTC)</time></dd>
+      {%- if entry.updated_at %}
+      <dt>Última modificación</dt>
+      <dd><time datetime="{{ entry.updated_at.isoformat() }}">{{ entry.updated_at.strftime('%d/%m/%Y %H:%M') }} (UTC)</time></dd>
+      {%- endif %}
+    </dl>
+
+    <h2 id="ocr-title">Texto reconocido (OCR)</h2>
+    {%- if entry.ocr_text.strip() %}
+    <pre class="ocr-text">{{ entry.ocr_text }}</pre>
+    {%- else %}
+    <p>No se detectó texto en la imagen.</p>
+    {%- endif %}
+  </section>
+</div>
+{% endblock %}

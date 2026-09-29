@@ -1,0 +1,52 @@
+{#-
+  Tabla de Últimas_Facturas de la Portada (Req. 16.8-16.17, 16.19). Se incluye en home.html.
+  Variables:
+    recent -- RecentPage (items, page, page_size, has_more)
+
+  "Ver siguientes" funciona con y sin JavaScript (16.11, 16.12):
+    - sin JS, el href carga la Portada con la Página_Recientes siguiente;
+    - con HTMX, /recent devuelve _recent_rows.html: las filas se añaden al final de
+      #recent-rows y #recent-more se reemplaza out-of-band.
+  #recent-more está fuera de <table> para que el reemplazo out-of-band no dependa del
+  análisis de HTML dentro de una tabla. "Anteriores" (16.13) va fuera de #recent-more: en la
+  vista acumulada con JS se conserva y sigue apuntando a la página anterior a la primera
+  mostrada.
+-#}
+{%- if recent.items %}
+<div class="table-scroll">
+  <table class="table--stack">
+    <caption class="visually-hidden">Últimas facturas dadas de alta, de la más reciente a la más antigua</caption>
+    <thead>
+      <tr>
+        <th scope="col">Fecha de factura</th>
+        <th scope="col">Proveedor/emisor</th>
+        <th scope="col">Concepto</th>
+        <th scope="col">Categoría</th>
+        <th scope="col">Tipo</th>
+        <th scope="col" class="num">Total</th>
+        <th scope="col"><span class="visually-hidden">Acciones</span></th>
+      </tr>
+    </thead>
+    <tbody id="recent-rows">
+      {%- with oob = false %}{% include "_recent_rows.html" %}{% endwith %}
+    </tbody>
+  </table>
+</div>
+{%- elif recent.page > 1 %}
+<p class="empty-state">No hay más facturas. <a href="/">Ir a la página 1</a></p>
+{%- else %}
+<p class="empty-state">Todavía no hay facturas. <a href="/upload">Sube la primera.</a></p>
+{%- endif %}
+
+<nav class="pagination" aria-label="Paginación de últimas facturas">
+  <div id="recent-more">
+    {%- if recent.has_more %}
+    <a class="button" href="/?recent_page={{ recent.page + 1 }}"
+       hx-get="/recent?page={{ recent.page + 1 }}"
+       hx-target="#recent-rows" hx-swap="beforeend">Ver siguientes</a>
+    {%- endif %}
+  </div>
+  {%- if recent.page > 1 %}
+  <a href="/?recent_page={{ recent.page - 1 }}" rel="prev">Anteriores</a>
+  {%- endif %}
+</nav>

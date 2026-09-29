@@ -1,0 +1,13 @@
+.venv
+.git
+.gitignore
+tests
+.kiro
+coverage.json
+.coverage*
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.hypothesis
+data
+tools

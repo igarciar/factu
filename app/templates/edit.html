@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{#-
+  Edición de un Apunte guardado (Req. 9.1, con las validaciones del Requisito 5).
+  Variables:
+    entry              -- Entry (id, imagen y título)
+    form               -- dict campo -> valor mostrado (valores guardados o enviados, Req. 5.7)
+    errors             -- dict campo -> mensaje de error (bloqueante)
+    warnings           -- dict "totals"/"tax_id" -> aviso
+    save_error_message -- texto del fallo al guardar (500) o None
+    categories         -- sugerencias de categoría (<datalist>, Req. 7.2)
+    entry_types        -- tipos admitidos ("gasto", "ingreso")
+    mismatch_field     -- nombre de la casilla de confirmación de descuadre ("confirm_mismatch")
+    mismatch_confirmed -- True si la casilla venía marcada
+  Todos los valores se escapan (autoescape, Req. 14.7).
+-#}
+{%- set invoice_date_text = entry.invoice_date.strftime('%d/%m/%Y') %}
+
+{%- macro describedby(name) -%}
+  {%- set ids = [] -%}
+  {%- if errors.get(name) %}{% set _ = ids.append(name ~ '-error') %}{% endif -%}
+  {%- if warnings.get(name) %}{% set _ = ids.append(name ~ '-warning') %}{% endif -%}
+  {%- if ids %} aria-describedby="{{ ids | join(' ') }}"{% endif -%}
+{%- endmacro %}
+
+{%- macro messages_for(name) -%}
+  {%- if errors.get(name) %}
+  <span class="field-error" id="{{ name }}-error">{{ errors[name] }}</span>
+  {%- endif %}
+  {%- if warnings.get(name) %}
+  <span class="field-hint alert--warning" id="{{ name }}-warning">{{ warnings[name] }}</span>
+  {%- endif %}
+{%- endmacro %}
+
+{%- macro text_field(name, label, type="text", required=false, maxlength=none, inputmode=none, list=none) -%}
+<div class="field{% if errors.get(name) %} field--error{% endif %}">
+  <label for="{{ name }}">{{ label }}{% if required %} (obligatorio){% endif %}</label>
+  <input type="{{ type }}" id="{{ name }}" name="{{ name }}" value="{{ form.get(name, '') }}"
+    {%- if required %} required{% endif %}
+    {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+    {%- if inputmode %} inputmode="{{ inputmode }}"{% endif %}
+    {%- if list %} list="{{ list }}"{% endif %}
+    {%- if errors.get(name) %} aria-invalid="true"{% endif %}
+    {{- describedby(name) }}>
+  {{ messages_for(name) }}
+</div>
+{%- endmacro %}
+
+{% block title %}Editar apunte del {{ invoice_date_text }}{% endblock %}
+
+{% block alerts %}
+{%- if save_error_message %}
+<p class="alert alert--error">{{ save_error_message }}</p>
+{%- endif %}
+{%- if errors %}
+<p class="alert alert--error">Revisa los campos marcados: {{ errors | length }} {{ "error" if errors | length == 1 else "errores" }}.</p>
+{%- endif %}
+{%- if warnings.get("totals") %}
+<p class="alert alert--warning">{{ warnings["totals"] }}</p>
+{%- endif %}
+{{- super() }}
+{% endblock %}
+
+{% block content %}
+<h1>Editar apunte del {{ invoice_date_text }}</h1>
+
+<div class="two-columns">
+  <section aria-labelledby="image-title">
+    <h2 id="image-title">Imagen de la factura</h2>
+    <img src="/entries/{{ entry.id }}/image" alt="Imagen de la factura del apunte {{ entry.id }}">
+  </section>
+
+  <section aria-labelledby="form-title">
+    <h2 id="form-title">Datos del apunte</h2>
+    <form method="post" action="{{ url_for('entries.edit', entry_id=entry.id) }}" novalidate>
+      {{ text_field("invoice_date", "Fecha de factura", type="date", required=true) }}
+
+      <div class="field{% if errors.get('entry_type') %} field--error{% endif %}">
+        <label for="entry_type">Tipo (obligatorio)</label>
+        <select id="entry_type" name="entry_type" required
+          {%- if errors.get('entry_type') %} aria-invalid="true"{% endif %}{{ describedby('entry_type') }}>
+          {%- for value in entry_types %}
+          <option value="{{ value }}"{% if form.get('entry_type') == value %} selected{% endif %}>{{ value | capitalize }}</option>
+          {%- endfor %}
+        </select>
+        {{ messages_for("entry_type") }}
+      </div>
+
+      {{ text_field("supplier", "Proveedor/emisor", maxlength=200) }}
+      {{ text_field("tax_id", "NIF/CIF") }}
+      {{ text_field("invoice_number", "Número de factura", maxlength=40) }}
+      {{ text_field("concept", "Concepto", maxlength=200) }}
+      {{ text_field("category", "Categoría", maxlength=60, list="categories") }}
+      <datalist id="categories">
+        {%- for name in categories %}
+        <option value="{{ name }}"></option>
+        {%- endfor %}
+      </datalist>
+      {{ text_field("base_amount", "Base imponible (€)", inputmode="decimal") }}
+      {{ text_field("vat_amount", "IVA (€)", inputmode="decimal") }}
+      {{ text_field("total", "Total (€)", required=true, inputmode="decimal") }}
+
+      {%- if warnings.get("totals") %}
+      <div class="field checkbox">
+        <input type="checkbox" id="{{ mismatch_field }}" name="{{ mismatch_field }}" value="1"
+          {%- if mismatch_confirmed %} checked{% endif %}>
+        <label for="{{ mismatch_field }}">Confirmo guardar el apunte aunque la base más el IVA no coincida con el total</label>
+      </div>
+      {%- endif %}
+
+      <div class="actions">
+        <button type="submit">Guardar cambios</button>
+        <a class="button button--secondary" href="{{ url_for('entries.detail', entry_id=entry.id) }}">Cancelar</a>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

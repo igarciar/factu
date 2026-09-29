@@ -1,0 +1,31 @@
+{#-
+  Filas de Últimas_Facturas (Req. 16.8, 16.9, 16.11, 16.14).
+  Variables:
+    recent -- RecentPage (items, page, page_size, has_more)
+    oob    -- True cuando se sirve por GET /recent (HTMX): añade #recent-more out-of-band
+              con el botón de la página siguiente, o vacío si no hay más (16.14).
+  El bloque out-of-band va dentro de <template> para que el analizador de HTML no lo
+  descarte junto a las <tr> (HTMX 2 procesa hx-swap-oob dentro de <template>).
+-#}
+{%- for entry in recent.items %}
+<tr>
+  <td data-label="Fecha de factura"><time datetime="{{ entry.invoice_date.isoformat() }}">{{ entry.invoice_date.strftime('%d/%m/%Y') }}</time></td>
+  <td data-label="Proveedor/emisor">{{ entry.supplier or "" }}</td>
+  <td data-label="Concepto">{{ entry.concept or "" }}</td>
+  <td data-label="Categoría">{{ entry.category or "" }}</td>
+  <td data-label="Tipo">{{ entry.entry_type | capitalize }}</td>
+  <td data-label="Total" class="num">{{ entry.total | eur }}</td>
+  <td data-label="Acciones"><a href="/entries/{{ entry.id }}" aria-label="Ver apunte de {{ entry.supplier or 'proveedor sin nombre' }} del {{ entry.invoice_date.strftime('%d/%m/%Y') }}">Ver</a></td>
+</tr>
+{%- endfor %}
+{%- if oob %}
+<template>
+  <div id="recent-more" hx-swap-oob="outerHTML">
+    {%- if recent.has_more %}
+    <a class="button" href="/?recent_page={{ recent.page + 1 }}"
+       hx-get="/recent?page={{ recent.page + 1 }}"
+       hx-target="#recent-rows" hx-swap="beforeend">Ver siguientes</a>
+    {%- endif %}
+  </div>
+</template>
+{%- endif %}

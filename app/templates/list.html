@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{#-
+  Listado de Apuntes con filtros y paginación (Req. 8.1-8.4).
+  Variables:
+    page, filters, filtered, totals -- ver _entries_table.html
+    categories  -- nombres de categorías para el <datalist> del filtro
+    entry_types -- tipos admitidos ("gasto", "ingreso")
+  El formulario funciona sin JavaScript (GET /entries); con HTMX sustituye solo #entries.
+-#}
+{% block title %}Apuntes{% endblock %}
+
+{% block content %}
+<h1>Apuntes</h1>
+
+<form class="filters" method="get" action="{{ url_for('entries.list_entries') }}"
+      hx-get="{{ url_for('entries.list_entries') }}" hx-target="#entries" hx-push-url="true"
+      aria-label="Filtros del listado">
+  <div class="field">
+    <label for="filter-type">Tipo</label>
+    <select id="filter-type" name="type">
+      <option value=""{% if not filters.type %} selected{% endif %}>Todos</option>
+      {%- for value in entry_types %}
+      <option value="{{ value }}"{% if filters.type == value %} selected{% endif %}>{{ value | capitalize }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="filter-category">Categoría</label>
+    <input type="text" id="filter-category" name="category" list="categories" maxlength="60"
+           value="{{ filters.category or '' }}">
+    <datalist id="categories">
+      {%- for name in categories %}
+      <option value="{{ name }}"></option>
+      {%- endfor %}
+    </datalist>
+  </div>
+  <div class="field">
+    <label for="filter-date-from">Desde</label>
+    <input type="date" id="filter-date-from" name="date_from" value="{{ filters.date_from or '' }}">
+  </div>
+  <div class="field">
+    <label for="filter-date-to">Hasta</label>
+    <input type="date" id="filter-date-to" name="date_to" value="{{ filters.date_to or '' }}">
+  </div>
+  <div class="actions">
+    <button type="submit">Filtrar</button>
+    <a class="button button--secondary" href="{{ url_for('entries.list_entries') }}">Quitar filtros</a>
+  </div>
+</form>
+
+<div id="entries" aria-live="polite">
+  {% include "_entries_table.html" %}
+</div>
+{% endblock %}

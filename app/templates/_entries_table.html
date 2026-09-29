@@ -1,0 +1,78 @@
+{#-
+  Tabla del listado de Apuntes (Req. 8.1-8.4). Se incluye en list.html dentro de #entries y
+  se devuelve suelta a las peticiones HTMX (HX-Request) de /entries.
+  Variables:
+    page     -- Page[Entry] (items, page, page_size, total, total_pages, has_previous, has_next)
+    filters  -- dict de filtros aplicados (type, category, date_from, date_to) ya normalizados
+    filtered -- True si hay algún filtro aplicado
+    totals   -- Totals (expenses, income) si hay filtros; None en otro caso
+  Todos los valores se escapan (autoescape, Req. 14.7).
+-#}
+{%- macro page_link(number, label, rel) -%}
+  {%- set href = url_for('entries.list_entries', page=number, **filters) -%}
+  <a class="button button--secondary" href="{{ href }}" rel="{{ rel }}"
+     hx-get="{{ href }}" hx-target="#entries" hx-push-url="true">{{ label }}</a>
+{%- endmacro %}
+{%- if filtered and totals %}
+<section class="cards" aria-label="Sumas de los apuntes filtrados">
+  <div class="card">
+    <p class="label">Suma de gastos</p>
+    <p class="card__value amount" data-total="expenses">{{ totals.expenses | eur }}</p>
+  </div>
+  <div class="card">
+    <p class="label">Suma de ingresos</p>
+    <p class="card__value amount" data-total="income">{{ totals.income | eur }}</p>
+  </div>
+</section>
+{%- endif %}
+
+<p class="pagination__summary">Página {{ page.page }} de {{ page.total_pages }} · {{ page.page_size }} por página · {{ page.total }} {{ "apunte" if page.total == 1 else "apuntes" }}</p>
+
+{%- if page.items %}
+<div class="table-scroll">
+  <table class="table--stack">
+    <caption class="visually-hidden">Apuntes ordenados por fecha de factura, del más reciente al más antiguo</caption>
+    <thead>
+      <tr>
+        <th scope="col">Fecha</th>
+        <th scope="col">Proveedor/emisor</th>
+        <th scope="col">Concepto</th>
+        <th scope="col">Categoría</th>
+        <th scope="col">Tipo</th>
+        <th scope="col" class="num">Total</th>
+        <th scope="col"><span class="visually-hidden">Acciones</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for entry in page.items %}
+      <tr>
+        <td data-label="Fecha"><time datetime="{{ entry.invoice_date.isoformat() }}">{{ entry.invoice_date.strftime('%d/%m/%Y') }}</time></td>
+        <td data-label="Proveedor/emisor">{{ entry.supplier or "" }}</td>
+        <td data-label="Concepto">{{ entry.concept or "" }}</td>
+        <td data-label="Categoría">{{ entry.category or "" }}</td>
+        <td data-label="Tipo">{{ entry.entry_type | capitalize }}</td>
+        <td data-label="Total" class="num">{{ entry.total | eur }}</td>
+        <td data-label="Acciones"><a href="{{ url_for('entries.detail', entry_id=entry.id) }}" aria-label="Ver apunte de {{ entry.supplier or 'proveedor sin nombre' }} del {{ entry.invoice_date.strftime('%d/%m/%Y') }}">Ver</a></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{%- elif page.total > 0 %}
+<p class="empty-state">No hay apuntes en esta página. <a href="{{ url_for('entries.list_entries', **filters) }}">Ir a la página 1</a></p>
+{%- elif filtered %}
+<p class="empty-state">Ningún apunte cumple los filtros aplicados.</p>
+{%- else %}
+<p class="empty-state">Todavía no hay apuntes. <a href="/upload">Sube la primera factura</a>.</p>
+{%- endif %}
+
+{%- if page.has_previous or page.has_next %}
+<nav class="pagination" aria-label="Paginación del listado">
+  {%- if page.has_previous %}
+  {{ page_link(page.page - 1, "Anterior", "prev") }}
+  {%- endif %}
+  {%- if page.has_next %}
+  {{ page_link(page.page + 1, "Siguiente", "next") }}
+  {%- endif %}
+</nav>
+{%- endif %}

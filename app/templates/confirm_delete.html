@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{#-
+  Confirmación explícita antes de eliminar un Apunte (Req. 9.2).
+  Variables:
+    entry -- Entry que se va a eliminar
+  El borrado solo ocurre con POST /entries/<id>/delete (Req. 9.3); sin JavaScript.
+-#}
+{%- set invoice_date_text = entry.invoice_date.strftime('%d/%m/%Y') %}
+{% block title %}Eliminar apunte del {{ invoice_date_text }}{% endblock %}
+
+{% block content %}
+<section aria-labelledby="delete-title">
+  <h1 id="delete-title">¿Eliminar este apunte?</h1>
+  <p class="alert alert--warning">Se eliminarán el apunte y la imagen de la factura. Esta acción no se puede deshacer.</p>
+  <dl class="entry-fields">
+    <dt>Fecha de factura</dt>
+    <dd><time datetime="{{ entry.invoice_date.isoformat() }}">{{ invoice_date_text }}</time></dd>
+    <dt>Proveedor/emisor</dt>
+    <dd>{{ entry.supplier or "—" }}</dd>
+    <dt>Concepto</dt>
+    <dd>{{ entry.concept or "—" }}</dd>
+    <dt>Tipo</dt>
+    <dd>{{ entry.entry_type | capitalize }}</dd>
+    <dt>Total</dt>
+    <dd class="amount">{{ entry.total | eur }}</dd>
+  </dl>
+  <form method="post" action="{{ url_for('entries.delete', entry_id=entry.id) }}">
+    <div class="actions">
+      <button type="submit" class="button--danger">Sí, eliminar el apunte</button>
+      <a class="button button--secondary" href="{{ url_for('entries.detail', entry_id=entry.id) }}">No, volver al apunte</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

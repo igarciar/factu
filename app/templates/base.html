@@ -1,0 +1,51 @@
+<!doctype html>
+{#-
+  Plantilla base de la Interfaz_Web (Req. 1.1, 2.2, 12.4, 14.7, 16.1).
+
+  Bloques: title, content, scripts (y alerts, que por defecto pinta ``messages``).
+  Variables opcionales:
+    messages  -- iterable de cadenas que se anuncian en la región role="alert".
+                 Se escapan siempre (autoescape de Flask, Req. 14.7).
+
+  Recursos locales, sin CDN (Req. 2.2):
+    static/app.css
+    static/htmx.min.js -- htmx.org 2.0.4 (dist/htmx.min.js del paquete npm), vendorizado.
+
+  La CSP es "default-src 'self'; img-src 'self'": no hay scripts ni estilos en línea.
+  htmx se configura con la meta "htmx-config" para que no inyecte su hoja de
+  estilos de indicadores (los estilos .htmx-indicator están en app.css).
+-#}
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+  <title>{% block title %}Facturas{% endblock %} · Invoice Reader</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script src="{{ url_for('static', filename='htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Principal">
+      <ul>
+        {%- set current_path = request.path if request else '' %}
+        <li><a href="/"{% if current_path == '/' %} aria-current="page"{% endif %}>Inicio</a></li>
+        <li><a href="/upload"{% if current_path == '/upload' %} aria-current="page"{% endif %}>Subir factura</a></li>
+        <li><a href="/entries"{% if current_path == '/entries' %} aria-current="page"{% endif %}>Apuntes</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main id="main" class="site-main" tabindex="-1">
+    <div id="alerts" class="alerts" role="alert">
+      {%- block alerts %}
+      {%- for message in messages or [] %}
+      <p class="alert">{{ message }}</p>
+      {%- endfor %}
+      {%- endblock %}
+    </div>
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

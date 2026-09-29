@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{#-
+  Revisión de un Borrador antes de guardarlo (Req. 4.1-4.5, 5.5-5.7, 7.2, 12.4, 14.7).
+  Variables:
+    draft_id           -- identificador del Borrador (32 hex).
+    image_url          -- URL de la imagen temporal (/drafts/<draft_id>/image).
+    values             -- campo -> valor del formulario (Borrador o valores enviados).
+    missing            -- campos no detectados por el Extractor (field--missing + "No detectado").
+    notice             -- "ocr_failed", "no_text" o None.
+    ocr_text           -- Texto_OCR (se muestra escapado dentro de <pre>).
+    errors             -- campo -> mensaje de validación (aria-invalid + texto).
+    warnings           -- "totals" (descuadre, necesita la casilla confirm_mismatch) y "tax_id".
+    mismatch_confirmed -- la casilla de descuadre venía marcada.
+    save_error         -- mensaje si falló el guardado, o None.
+    categories         -- sugerencias para <datalist id="categories">.
+  Todo se escapa con el autoescape de Flask; no se usa |safe con datos del Usuario ni del OCR.
+-#}
+
+{%- macro aria(described, error) -%}
+{%- if described %} aria-describedby="{{ described | join(' ') }}"{% endif -%}
+{%- if error %} aria-invalid="true"{% endif -%}
+{%- endmacro %}
+
+{%- macro field(name, label, kind="text", maxlength=none, required=false) -%}
+{%- set fid = "f-" ~ name %}
+{%- set value = values.get(name) or "" %}
+{%- set is_missing = name in missing %}
+{%- set error = errors.get(name) %}
+{%- set warning = warnings.get(name) if name == "tax_id" else none %}
+{%- set described = ([fid ~ "-missing"] if is_missing else [])
+                  + ([fid ~ "-warning"] if warning else [])
+                  + ([fid ~ "-error"] if error else []) %}
+<div class="field{% if is_missing %} field--missing{% endif %}{% if error %} field--error{% endif %}">
+  <label for="{{ fid }}">{{ label }}</label>
+  {%- if kind == "select" %}
+  <select id="{{ fid }}" name="{{ name }}"{% if required %} required{% endif %}{{ aria(described, error) }}>
+    <option value="gasto"{% if value == "gasto" %} selected{% endif %}>Gasto</option>
+    <option value="ingreso"{% if value == "ingreso" %} selected{% endif %}>Ingreso</option>
+  </select>
+  {%- else %}
+  <input id="{{ fid }}" name="{{ name }}" value="{{ value }}"
+    {%- if kind == "date" %} type="date"
+    {%- elif kind == "amount" %} type="text" inputmode="decimal" autocomplete="off"
+    {%- elif kind == "category" %} type="text" list="categories" autocomplete="off"
+    {%- else %} type="text"
+    {%- endif %}
+    {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+    {%- if required %} required{% endif %}{{ aria(described, error) }}>
+  {%- endif %}
+  {%- if is_missing %}
+  <span id="{{ fid }}-missing" class="field-hint">No detectado</span>
+  {%- endif %}
+  {%- if warning %}
+  <span id="{{ fid }}-warning" class="field-hint field-missing-note">{{ warning }}</span>
+  {%- endif %}
+  {%- if error %}
+  <span id="{{ fid }}-error" class="field-error">{{ error }}</span>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% block title %}Revisar factura{% endblock %}
+
+{% block alerts %}
+{%- if save_error %}
+<p class="alert alert--error">{{ save_error }}</p>
+{%- endif %}
+{%- if errors %}
+<p class="alert alert--error">No se ha guardado: revisa los campos marcados ({{ errors | length }}).</p>
+{%- endif %}
+{%- if notice == "ocr_failed" %}
+<p class="alert alert--warning">No se ha podido leer el texto de la factura (fallo del OCR). Rellena los datos a mano.</p>
+{%- elif notice == "no_text" %}
+<p class="alert alert--warning">No se ha detectado texto en la imagen. Rellena los datos a mano.</p>
+{%- endif %}
+{%- if warnings.get("totals") %}
+<p class="alert alert--warning">La base imponible más el IVA no coincide con el total. Marca la casilla de confirmación para guardar igualmente.</p>
+{%- endif %}
+{%- endblock %}
+
+{% block content %}
+<h1>Revisar factura</h1>
+<div class="two-columns">
+  <section aria-labelledby="image-title">
+    <h2 id="image-title">Imagen de la factura</h2>
+    <p><a href="{{ image_url }}"><img src="{{ image_url }}" alt="Foto de la factura subida"></a></p>
+    <h2 id="ocr-title">Texto leído</h2>
+    {%- if ocr_text.strip() %}
+    <pre class="ocr-text" aria-labelledby="ocr-title" tabindex="0">{{ ocr_text }}</pre>
+    {%- else %}
+    <p>No hay texto leído.</p>
+    {%- endif %}
+  </section>
+
+  <section aria-labelledby="form-title">
+    <h2 id="form-title">Datos del apunte</h2>
+    <form class="review-form" action="/drafts/{{ draft_id }}/confirm" method="post">
+      {{ field("invoice_date", "Fecha de factura", kind="date", required=true) }}
+      {{ field("entry_type", "Tipo", kind="select", required=true) }}
+      {{ field("supplier", "Proveedor / emisor", maxlength=200) }}
+      {{ field("tax_id", "NIF/CIF") }}
+      {{ field("invoice_number", "Número de factura", maxlength=40) }}
+      {{ field("concept", "Concepto", maxlength=200) }}
+      {{ field("category", "Categoría", kind="category", maxlength=60) }}
+      <datalist id="categories">
+        {%- for category in categories %}
+        <option value="{{ category }}"></option>
+        {%- endfor %}
+      </datalist>
+      {{ field("base_amount", "Base imponible (€)", kind="amount") }}
+      {{ field("vat_amount", "IVA (€)", kind="amount") }}
+      {{ field("total", "Total (€)", kind="amount", required=true) }}
+      {%- if warnings.get("totals") %}
+      <div class="field field--inline checkbox">
+        <p id="totals-warning" class="alert alert--warning">{{ warnings["totals"] }}</p>
+        <input type="checkbox" id="confirm_mismatch" name="confirm_mismatch" value="on"
+               aria-describedby="totals-warning"{% if mismatch_confirmed %} checked{% endif %}>
+        <label for="confirm_mismatch">Confirmo que quiero guardar el apunte con este descuadre</label>
+      </div>
+      {%- endif %}
+      <div class="actions">
+        <button type="submit">Guardar apunte</button>
+        <button type="submit" class="button--secondary" formaction="/drafts/{{ draft_id }}/cancel" formnovalidate>Cancelar y descartar</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

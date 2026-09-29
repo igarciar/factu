@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{#-
+  Página de error genérica (404 y 500, sin traza).
+  Variables:
+    status_code -- código HTTP (404, 500...). Por defecto 500.
+    message     -- texto opcional; si falta, se usa uno genérico según el código.
+-#}
+{%- set code = status_code | default(500) %}
+{%- if message %}
+  {%- set error_text = message %}
+{%- elif code == 404 %}
+  {%- set error_text = "No se ha encontrado la página o el recurso solicitado." %}
+{%- else %}
+  {%- set error_text = "Se ha producido un error inesperado. Inténtalo de nuevo más tarde." %}
+{%- endif %}
+
+{% block title %}{% if code == 404 %}No encontrado{% else %}Error{% endif %}{% endblock %}
+
+{% block content %}
+<section class="error-page" aria-labelledby="error-title">
+  <h1 id="error-title">{% if code == 404 %}Página no encontrada{% else %}Algo ha fallado{% endif %}</h1>
+  <p class="error-page__code">Error {{ code }}</p>
+  <p>{{ error_text }}</p>
+  <p><a class="button" href="/">Volver al inicio</a></p>
+</section>
+{% endblock %}

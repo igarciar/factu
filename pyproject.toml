@@ -1,0 +1,17 @@
+[project]
+name = "invoice-reader"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# pytest splits addopts with shlex (POSIX rules) on every OS, so the single
+# quotes around the marker expression work on Windows too.
+addopts = "-m 'not tesseract' --cov=app --cov-branch --cov-report=term-missing --cov-report=json"
+markers = [
+    "tesseract: requires a real Tesseract install with the 'spa' language (run manually with -m tesseract)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]

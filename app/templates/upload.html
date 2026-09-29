@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{#-
+  Formulario de subida de la Imagen_Factura (Req. 1.1, 1.4-1.6, 12.4).
+  Variables:
+    max_size -- tamaño máximo legible, p. ej. "10 MB".
+    error    -- mensaje de error (sin fichero, formato, tamaño) o None.
+  capture="environment" abre la cámara trasera en el móvil; accept limita a JPEG y PNG.
+-#}
+
+{% block title %}Subir factura{% endblock %}
+
+{% block alerts %}
+{%- if error %}
+<p class="alert alert--error">{{ error }}</p>
+{%- endif %}
+{%- endblock %}
+
+{% block content %}
+<h1>Subir factura</h1>
+<form class="upload-form" action="/uploads" method="post" enctype="multipart/form-data">
+  <div class="field{% if error %} field--error{% endif %}">
+    <label for="file">Foto de la factura</label>
+    <input type="file" id="file" name="file" accept="image/jpeg,image/png" capture="environment" required
+           aria-describedby="file-hint{% if error %} file-error{% endif %}"{% if error %} aria-invalid="true"{% endif %}>
+    <span id="file-hint" class="field-hint">Haz una foto o elige una imagen JPEG o PNG de como máximo {{ max_size }}.</span>
+    {%- if error %}
+    <span id="file-error" class="field-error">{{ error }}</span>
+    {%- endif %}
+  </div>
+  <div class="actions">
+    <button type="submit">Subir y leer factura</button>
+  </div>
+</form>
+{% endblock %}
