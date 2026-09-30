@@ -84,6 +84,11 @@ Supuestos:
 8. SI el Extractor no detecta un Campo_Apunte, ENTONCES EL Extractor DEBERÁ dejar ese campo vacío en el Borrador y marcarlo como no detectado.
 9. EL Extractor DEBERÁ proponer el Tipo `gasto` por defecto en el Borrador.
 10. EL Extractor DEBERÁ ser una función determinista: para el mismo Texto_OCR DEBERÁ producir el mismo Borrador.
+11. CUANDO una línea del Texto_OCR es un encabezado "FACTURA" seguido de un número (sin "nº"), por ejemplo `FACTURA 050-0008-327711`, EL Extractor DEBERÁ proponer ese número como número de factura, admitiendo tokens formados por dígitos, letras, guiones, barras y puntos, y conservando además el reconocimiento de las etiquetas "Factura nº", "Nº factura", "Número de factura" e "Invoice" del criterio 3.6.
+12. EL Extractor DEBERÁ reconocer la etiqueta "Fecha de venta" como ancla de fecha adicional, tomando como fecha de factura la primera fecha válida que aparezca tras ella, y DEBERÁ seguir reconociendo la etiqueta "Fecha" y, en su defecto, la primera fecha válida del Texto_OCR (criterio 3.2).
+13. CUANDO una etiqueta de base imponible, IVA o total no lleva ningún Importe en su propia línea, EL Extractor DEBERÁ buscar el Importe en la siguiente línea no vacía del Texto_OCR, para admitir facturas en tabla con una fila de etiquetas sobre una fila de números.
+14. EL Extractor DEBERÁ reconocer, además de las etiquetas del criterio 3.5, los sinónimos de etiqueta habituales en facturas españolas: para la base imponible "Total si" y "Base imponible (EUR)"; para el IVA "Total IVA", "Total IVA/IGIC/IPSI" y "Cuota"; para el total "Total TII", "Total (EUR)" e "Importe total (EUR)"; y DEBERÁ excluir del IVA las columnas de porcentaje, incluida una columna "Tasa IVA/IGIC/IPSI" cuyo valor sea un tipo impositivo (por ejemplo `21,00`), tomando como IVA el Importe de la columna "Total IVA...".
+15. EL Extractor DEBERÁ tratar las facturas en formato de tabla o de varias columnas con criterio de mejor esfuerzo: cuando el Texto_OCR aplana la tabla de forma que un Campo_Apunte no se puede asignar sin ambigüedad, EL Extractor DEBERÁ dejar ese campo sin detectar, quedando editable por el Usuario en la revisión (criterio 3.8 y Requisitos 4 y 5).
 
 ### Requisito 4: Revisión y edición antes de guardar
 

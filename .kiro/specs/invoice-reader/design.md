@@ -265,9 +265,22 @@ Reglas:
 - **Fechas (3.2).** Regex `\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})\b`. El separador debe ser el mismo en ambas posiciones. Los años de dos cifras se interpretan como `2000 + aa`. Si la fecha no es válida en el calendario se descarta (`date(...)` lanza `ValueError`). Se elige la primera fecha que aparezca tras una etiqueta "Fecha" y, si no hay ninguna, la primera fecha válida del texto.
 - **NIF/NIE/CIF (3.3).** Primero se normaliza cada candidato quitando espacios y guiones y pasándolo a mayúsculas. Después se aplican estos patrones: NIF `^\d{8}[A-Z]$`, NIE `^[XYZ]\d{7}[A-Z]$`, CIF `^[ABCDEFGHJKLMNPQRSUVW]\d{7}[0-9A-J]$`. El texto se recorre con una regex tolerante a separadores: `\b([A-Z]|\d)[\s-]?(\d[\s-]?){7}[\s-]?[A-Z0-9]\b`, sin distinguir mayúsculas. Se propone el primer candidato del emisor (el primero del texto). La validez del dígito de control no se exige al extraer, solo se avisa al validar (5.6).
 - **Importes (3.4).** Regex `€?\s*(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d+\.\d{2}|\d+)\s*€?`. Si hay coma, los puntos se tratan como separadores de miles y la coma como decimal. Si no hay coma y el número termina en `.dd`, el punto es decimal. El resultado es `Decimal(...).quantize(Decimal("0.01"), ROUND_HALF_UP)`.
-- **Base/IVA/Total (3.5).** Se buscan línea a línea con etiquetas sin distinguir mayúsculas ni tildes (tras normalizar con `unicodedata`): base `("base imponible", "base")`; IVA `("cuota iva", "iva", "i.v.a.")` (se descarta el porcentaje `21%` y se toma el importe monetario de la línea); total `("importe total", "total factura", "total a pagar", "total")`. Se prueban de la más específica a la más genérica y se excluyen las líneas de "subtotal" para el total.
-- **Número de factura (3.6).** Regex `(?:factura\s*n[º°o.]?|n[º°o.]?\s*(?:de\s*)?factura|n[úu]mero\s+de\s+factura|invoice(?:\s*(?:no|n[º°]|#))?)\s*[:#]?\s*([A-Z0-9][A-Z0-9/\-.]{0,29})`, sin distinguir mayúsculas.
-- **Proveedor (3.7).** Es la primera línea tras `strip()` que no esté vacía, que no se lea entera como fecha, NIF/CIF o importe, y que contenga al menos una letra.
+- **Base/IVA/Total (3.5, 3.13, 3.14).** Se buscan línea a línea con etiquetas sin distinguir mayúsculas ni tildes (tras normalizar con `unicodedata`, `_fold`). Las listas de etiquetas van ya plegadas (minúsculas, sin tildes) y ordenadas de la más específica a la más genérica:
+  - `BASE_LABELS = ("base imponible (eur)", "base imponible", "total si", "base")`
+  - `VAT_LABELS = ("total iva/igic/ipsi", "total iva", "cuota iva", "cuota", "iva", "i.v.a.")`
+  - `TOTAL_LABELS = ("importe total (eur)", "importe total", "total factura", "total a pagar", "total tii", "total (eur)", "total")`
+
+  Las variantes más específicas se colocan **antes** que sus prefijos (`"total iva"` antes de `"total"`, `"base imponible (eur)"` antes de `"base imponible"`) para que gane la etiqueta más precisa. Se sigue excluyendo `"subtotal"`/`"sub-total"` mediante los *lookbehinds* de `_label_regex`.
+
+  **Importe en la misma línea o en la siguiente (3.13).** `_amount_after_label` busca primero un Importe tras la etiqueta en su misma línea. Si no lo encuentra (fila de solo etiquetas sobre una fila de números, típica de facturas en tabla), toma el Importe de la **siguiente línea no vacía**. La búsqueda usa la posición de la etiqueta: en la línea de la etiqueta se escanea a partir del final de la etiqueta; al pasar a la línea siguiente se toma el Importe alineado por orden de columna (el primer Importe válido de esa línea que no sea un porcentaje). Es un mapeo posicional fila-etiquetas → fila-números por orden de columna, determinista y explicable.
+
+  **Exclusión del porcentaje / columna "Tasa" (3.14).** Se mantiene la exclusión de cualquier token con sufijo `%` (`_LINE_AMOUNT_RE` marca `pct`). Además, para el IVA la preferencia por la etiqueta específica evita la columna de tipo impositivo: cuando existe una columna "Total IVA..." se lee su Importe (etiqueta más específica probada primero) en lugar del valor de una columna "Tasa IVA/IGIC/IPSI" (por ejemplo `21,00`). El heurístico es robusto y explicable: probar las etiquetas de más a menos específicas y, al escanear la línea siguiente, respetar el orden de columnas; nunca se elige un valor bajo la etiqueta "Tasa".
+- **Número de factura (3.6, 3.11).** `INVOICE_NUMBER_RE` combina dos ramas, sin distinguir mayúsculas y en modo ASCII:
+  - Etiquetas (3.6): `factura nº`, `nº factura`, `número de factura`, `invoice` (con las variantes `no`/`nº`/`#`).
+  - Encabezado desnudo (3.11): `FACTURA <n>` sin "nº", por ejemplo `FACTURA 050-0008-327711` → `050-0008-327711`. Se añade una alternativa que reconoce `factura` seguido directamente de un token de número, cuando no va precedido de "nº". El token de número admite dígitos, letras, guiones, barras y puntos (`[A-Z0-9][A-Z0-9/\-.]{0,29}`), y se devuelve en mayúsculas sin punto final. Se conserva el comportamiento previo de todas las etiquetas del 3.6.
+- **Fecha (3.2, 3.12).** El ancla de fecha (`DATE_LABEL_RE`) reconoce la etiqueta `fecha` como palabra y, adicionalmente, `fecha de venta`. La fecha de factura es la primera fecha válida que aparece tras la etiqueta encontrada; si no hay etiqueta o no hay fecha tras ella, se usa la primera fecha válida del texto. La etiqueta desnuda `Fecha` sigue funcionando; `Fecha de venta` es solo un ancla etiquetada adicional.
+- **Proveedor (3.7).** Es la primera línea tras `strip()` que no esté vacía, que no se lea entera como fecha, NIF/CIF o importe, y que contenga al menos una letra. **Limitación aceptada:** si la factura empieza con una línea de reclamo comercial (por ejemplo `BRICOLAJE · CONSTRUCCIÓN...`), el proveedor propuesto puede ser esa línea; es aceptable y el Usuario puede corregirlo en la revisión. No se añade lógica específica para banners.
+- **Mejor esfuerzo en tablas (3.15).** El mapeo columna a columna del Texto_OCR aplanado por Tesseract es de mejor esfuerzo. Si el OCR aplana la tabla de forma anómala, algún campo puede quedar sin detectar; queda editable en la revisión (3.8 y Req. 4/5). Todo lo anterior sigue siendo puro y determinista (3.10): sin estado global, reloj ni aleatoriedad; las regex y las listas de etiquetas son constantes del módulo.
 - **Concepto y categoría.** No hay regla fiable, así que el extractor los deja vacíos y marcados como no detectados (3.8).
 - **Tipo (3.9).** Siempre `gasto`. `entry_type` nunca figura en `missing`.
 - **Determinismo (3.10).** No se usan estado global, reloj ni aleatoriedad. Las regex se compilan como constantes del módulo.
@@ -930,6 +943,26 @@ Reflexión aplicada al Requisito 16: 16.2–16.7 se agrupan en una propiedad fre
 *Para cualquier* cadena `s` (Unicode arbitrario, `None` incluido), `parse_recent_page(s)` devuelve un entero entre 1 y 100000; *para cualquier* entero `n` entre 1 y 100000, `parse_recent_page(str(n)) == n`; y *para cualquier* entero fuera de ese rango o cadena que no sea solo dígitos ASCII, el resultado es 1.
 
 **Validates: Requirements 16.15**
+
+Reflexión aplicada a la ampliación del extractor (3.11–3.15): la Property 5 (asignación de importes por etiqueta) se amplía para cubrir los nuevos sinónimos y el importe en la línea siguiente, en lugar de crear una propiedad redundante por sinónimo; la exclusión de la columna "Tasa"/porcentaje se expresa como una propiedad aparte (Property 26) porque comprueba lo contrario (que un valor NO se elige). El encabezado desnudo `FACTURA <n>` amplía la Property 6. La etiqueta `Fecha de venta` amplía la Property 2 y se añade una propiedad específica (Property 28) para el ancla etiquetada. El criterio 3.15 (mejor esfuerzo) no es testable como propiedad universal (depende de cómo aplane Tesseract la tabla) y se cubre con la prueba unitaria del texto OCR real de Leroy Merlin.
+
+### Property 26: El IVA no toma el valor de la columna "Tasa"/porcentaje
+
+*Para cualquier* terna de importes `(b, i, t)` y cualquier tipo impositivo `p` (por ejemplo `21,00`) dispuestos como una tabla con una fila de etiquetas (que incluye una columna "Tasa IVA/IGIC/IPSI" y una columna "Total IVA...") sobre una fila de números, `extract` produce `vat_amount == i` (el Importe bajo "Total IVA..."), nunca `p`, tanto si `p` aparece con sufijo `%` como si es un valor suelto en la columna "Tasa".
+
+**Validates: Requirements 3.14**
+
+### Property 27: Importe con etiqueta en la línea anterior
+
+*Para cualquier* terna de importes `(b, i, t)` y cualquier elección de etiquetas de las listas admitidas (incluidos los sinónimos de 3.14), dispuestos como una fila de etiquetas seguida de una fila de números con las columnas en el mismo orden y con líneas de ruido intercaladas, `extract` produce `base_amount == b`, `vat_amount == i` y `total == t`, tomando cada Importe de la siguiente línea no vacía tras su etiqueta.
+
+**Validates: Requirements 3.13, 3.14**
+
+### Property 28: Número de factura tras el encabezado "FACTURA" y ancla "Fecha de venta"
+
+*Para cualquier* número alfanumérico `n` que empiece por letra o dígito, formado por `[A-Z0-9/.-]` y de 1 a 30 caracteres, un texto que contenga la línea `"FACTURA {n}"` (sin "nº") produce `invoice_number == n` en mayúsculas; y *para cualquier* fecha válida `d`, un texto con la línea `"Fecha de venta: {format(d)}"` y sin otras fechas anteriores produce `invoice_date == d.isoformat()`.
+
+**Validates: Requirements 3.11, 3.12**
 
 ## Estrategia de pruebas
 

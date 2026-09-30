@@ -1809,6 +1809,41 @@
         "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
         "timestamp": 1790680309939
       }
+    ],
+    "4.11 Ampliar el extractor para facturas con importes en tabla y encabezado FACTURA": [
+      {
+        "executionId": "6b4defdc-11c8-418f-8346-85fcf3aeb657",
+        "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
+        "timestamp": 1790767101971
+      }
+    ],
+    "4.12 Ampliar la prueba de propiedad de asignación de importes por etiqueta": [
+      {
+        "executionId": "6b4defdc-11c8-418f-8346-85fcf3aeb657",
+        "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
+        "timestamp": 1790767102307
+      }
+    ],
+    "4.13 Escribir prueba de propiedad de importe con etiqueta en la línea anterior y exclusión de \"Tasa\"": [
+      {
+        "executionId": "6b4defdc-11c8-418f-8346-85fcf3aeb657",
+        "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
+        "timestamp": 1790767102785
+      }
+    ],
+    "4.14 Ampliar la prueba de propiedad del número de factura y de la etiqueta \"Fecha de venta\"": [
+      {
+        "executionId": "6b4defdc-11c8-418f-8346-85fcf3aeb657",
+        "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
+        "timestamp": 1790767103166
+      }
+    ],
+    "4.15 Escribir prueba unitaria con el Texto_OCR real de la factura de Leroy Merlin como fixture": [
+      {
+        "executionId": "6b4defdc-11c8-418f-8346-85fcf3aeb657",
+        "chatSessionId": "sess_6ea3ad84-7935-4898-bed4-f2fbb190c6c4",
+        "timestamp": 1790767103978
+      }
     ]
   }
 }

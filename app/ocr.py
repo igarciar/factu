@@ -9,12 +9,14 @@ Requirements: 2.1, 2.2, 2.3, 2.4, 15.2.
 
 from __future__ import annotations
 
+import base64
 import io
 import logging
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import pytesseract
+import requests
 from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,143 @@ class OcrEngine(Protocol):
     def extract_text(self, image_bytes: bytes) -> str: ...
 
     def status(self) -> OcrStatus: ...
+
+
+class VisionModelOcrEngine:
+    """``OcrEngine`` respaldado por Ollama con modelo de visión (qwen-vl o llava).
+    
+    Env: by default, connects to http://127.0.0.1:11434 (Ollama API endpoint).
+    Modelo: qwen-vl:7b-q4 (quantized, ~5GB) con fallback a llava:7b-q4.
+    """
+
+    def __init__(
+        self,
+        ollama_api_url: str = "http://127.0.0.1:11434",
+        model: str = "qwen-vl:7b-q4",
+        fallback_model: str = "llava:7b-q4",
+        timeout_s: int = 120,
+    ) -> None:
+        self.ollama_api_url = ollama_api_url.rstrip("/")
+        self.model = model
+        self.fallback_model = fallback_model
+        self.timeout_s = timeout_s
+
+    def extract_text(self, image_bytes: bytes) -> str:
+        """Devuelve el Texto_OCR de ``image_bytes`` usando Ollama con modelo de visión.
+        
+        Encodes the image as base64 and sends to the Ollama API with a prompt:
+        'Extract all text from this invoice. Focus on table data, amounts, dates, and 
+        identifiers. Output plain text only, preserving layout and structure.'
+        
+        Raises:
+            OcrTimeout: Ollama supera ``timeout_s`` segundos o no responde.
+            OcrUnavailable: Ollama API no es accesible.
+            OcrError: fallo de procesamiento.
+        """
+        # Encode image as base64
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                img.load()
+                image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        except Exception as exc:
+            raise OcrError(f"No se pudo procesar la imagen: {exc}") from exc
+
+        prompt = (
+            "Extract all text from this invoice. Focus on table data, amounts, dates, and identifiers. "
+            "Output plain text only, preserving layout and structure."
+        )
+
+        # Try primary model first
+        models_to_try = [self.model, self.fallback_model]
+        last_error = None
+
+        for model_name in models_to_try:
+            try:
+                response = requests.post(
+                    f"{self.ollama_api_url}/api/generate",
+                    json={
+                        "model": model_name,
+                        "prompt": prompt,
+                        "images": [image_base64],
+                        "stream": False,
+                    },
+                    timeout=self.timeout_s,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if "response" in data:
+                    text = data["response"].strip()
+                    if text:
+                        return text
+                    raise OcrError(f"Modelo {model_name} devolvió respuesta vacía")
+            except requests.Timeout as exc:
+                last_error = OcrTimeout(f"Ollama {model_name} timeout: {exc}")
+                logger.warning("Ollama %s timeout", model_name)
+                # Try fallback if available
+                if model_name == self.model and self.fallback_model != model_name:
+                    continue
+                raise last_error from exc
+            except requests.ConnectionError as exc:
+                last_error = OcrUnavailable(f"Ollama API no es accesible: {exc}")
+                logger.warning("Ollama API no accesible: %s", exc)
+                # Try fallback
+                if model_name == self.model and self.fallback_model != model_name:
+                    continue
+                raise last_error from exc
+            except requests.RequestException as exc:
+                error_msg = str(exc)
+                if "404" in error_msg or "model not found" in error_msg.lower():
+                    # Model not available, try fallback
+                    if model_name == self.model and self.fallback_model != model_name:
+                        logger.warning("Modelo %s no disponible, probando fallback", model_name)
+                        continue
+                    last_error = OcrUnavailable(f"Modelo {model_name} no disponible: {exc}")
+                    raise last_error from exc
+                last_error = OcrError(f"Error Ollama: {exc}")
+                raise last_error from exc
+
+        if last_error:
+            raise last_error
+
+        raise OcrError("No se pudo obtener respuesta de Ollama")
+
+    def status(self) -> OcrStatus:
+        """Comprueba si Ollama API está accesible y tiene el modelo disponible."""
+        try:
+            response = requests.get(
+                f"{self.ollama_api_url}/api/tags",
+                timeout=2,
+            )
+            response.raise_for_status()
+            data = response.json()
+            models = tuple(m.get("name", "") for m in data.get("models", []))
+            
+            # Check if primary model is available
+            if any(m.startswith(self.model) for m in models):
+                return OcrStatus(available=True, languages=models)
+            
+            # Check fallback
+            if any(m.startswith(self.fallback_model) for m in models):
+                logger.warning("Modelo principal %s no disponible, usando fallback", self.model)
+                return OcrStatus(available=True, languages=models)
+            
+            return OcrStatus(
+                available=False,
+                languages=models,
+                detail=f"Modelos {self.model} o {self.fallback_model} no están pre-descargados",
+            )
+        except requests.RequestException as exc:
+            logger.warning("Ollama API no accesible: %s", exc)
+            return OcrStatus(
+                available=False,
+                detail=f"Ollama API no accesible: {exc}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Error comprobando Ollama: %s", exc)
+            return OcrStatus(
+                available=False,
+                detail=str(exc) or type(exc).__name__,
+            )
 
 
 class TesseractOcrEngine:

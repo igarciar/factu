@@ -130,6 +130,33 @@ El host de desarrollo es Windows: los comandos se ejecutan con el Python del ent
     - Factura de ejemplo completa en español, fechas imposibles (31/02), separadores mezclados, "Subtotal" frente a "Total", línea de IVA con `21%`, texto vacío
     - _Requirements: 3.1–3.9_
 
+  - [ ] 4.11 Ampliar el extractor para facturas con importes en tabla y encabezado FACTURA
+    - En `app/extractor.py`, ampliar `BASE_LABELS`, `VAT_LABELS` y `TOTAL_LABELS` con los sinónimos plegados del diseño (base: "total si", "base imponible (eur)"; IVA: "total iva", "total iva/igic/ipsi", "cuota"; total: "total tii", "total (eur)", "importe total (eur)"), colocando cada variante específica antes de su prefijo
+    - En `find_labeled_amount`/`_amount_after_label`, cuando la línea de la etiqueta no lleva Importe, buscar el Importe en la siguiente línea no vacía (mapeo posicional fila-etiquetas → fila-números por orden de columna); mantener la exclusión del sufijo `%` y no elegir nunca el valor de la columna "Tasa" (preferir la etiqueta "Total IVA..." más específica)
+    - En `INVOICE_NUMBER_RE`, añadir la rama de encabezado desnudo `FACTURA <n>` (sin "nº"), token `[A-Z0-9][A-Z0-9/\-.]{0,29}`; conservar las etiquetas del 3.6
+    - En `DATE_LABEL_RE`, añadir la etiqueta "Fecha de venta" como ancla adicional, conservando "Fecha" y la primera fecha válida como respaldo
+    - Mantener la pureza y el determinismo (sin estado global, reloj ni aleatoriedad; regex y listas como constantes del módulo)
+    - _Requirements: 3.11, 3.12, 3.13, 3.14, 3.15, 3.10_
+
+  - [ ]* 4.12 Ampliar la prueba de propiedad de asignación de importes por etiqueta
+    - **Property 5: Asignación de importes por etiqueta** (ampliar generadores con los nuevos sinónimos de etiqueta)
+    - **Validates: Requirements 3.5, 3.14**
+
+  - [ ]* 4.13 Escribir prueba de propiedad de importe con etiqueta en la línea anterior y exclusión de "Tasa"
+    - **Property 26: El IVA no toma el valor de la columna "Tasa"/porcentaje**
+    - **Property 27: Importe con etiqueta en la línea anterior**
+    - **Validates: Requirements 3.13, 3.14**
+
+  - [ ]* 4.14 Ampliar la prueba de propiedad del número de factura y de la etiqueta "Fecha de venta"
+    - **Property 6: Extracción del número de factura** (ampliar con el encabezado desnudo `FACTURA <n>`)
+    - **Property 28: Número de factura tras el encabezado "FACTURA" y ancla "Fecha de venta"**
+    - **Validates: Requirements 3.6, 3.11, 3.12**
+
+  - [ ]* 4.15 Escribir prueba unitaria con el Texto_OCR real de la factura de Leroy Merlin como fixture
+    - Fixture con el Texto_OCR real de la factura de Leroy Merlin (formato tabla) — **el texto OCR se captura por separado**; guardarlo como fixture y marcar claramente su origen
+    - Comprobar que `extract` propone número de factura (`FACTURA 050-0008-327711` → `050-0008-327711`), fecha ("Fecha de venta"), base, IVA (columna "Total IVA...", no la columna "Tasa") y total; documentar como comentario los campos que queden sin detectar por el aplanado del OCR (mejor esfuerzo, 3.15)
+    - _Requirements: 3.11, 3.12, 3.13, 3.14, 3.15_
+
 - [x] 5. Validación del formulario (`app/validation.py`)
   - [x] 5.1 Implementar `ValidationResult` y `validate_entry`
     - Obligatorios `invoice_date`, `entry_type`, `total`; fecha ISO válida; tipo en `{gasto, ingreso}`; importes con `parse_amount` y `≥ 0`
@@ -378,6 +405,7 @@ El host de desarrollo es Windows: los comandos se ejecutan con el Python del ent
 - La ejecución por defecto no necesita Tesseract ni red: `FakeOcrEngine`, `pytesseract` simulado y rutas en `tmp_path`.
 - Las pruebas manuales de Docker (salud del contenedor, `id -u` ≠ 0, persistencia tras `down`/`up`) y de usabilidad móvil (incluida la Portada a 360 px y "Ver siguientes" con JavaScript real, 16.11 y 16.19) quedan fuera de este plan porque no son tareas de código.
 - Portada (Requisito 16): las tareas 1.8–1.12, 8.6–8.8, 10.9–10.11, 12.11 y 12.12 se añadieron al final de sus secciones para no renumerar; 12.2, 12.3, 12.6 y 12.9 se actualizaron por el traslado del formulario de subida a `GET /upload`.
+- Ampliación del extractor (Requisitos 3.11–3.15, facturas en tabla y encabezado FACTURA): las tareas 4.11–4.15 se añadieron al final de la sección 4 para no renumerar. 4.11 amplía `app/extractor.py`; las pruebas 4.12–4.14 amplían las Properties 5, 6 y 26–28, y 4.15 añade una prueba unitaria con el Texto_OCR real de Leroy Merlin como fixture (el texto se captura por separado). El resto de módulos no cambia.
 - Antes de implementar, conviene revisar si hay ARMs activos sobre Docker, Python/Flask/WSGI y Testing, tal como indica el diseño.
 
 ## Task Dependency Graph
@@ -390,8 +418,8 @@ El host de desarrollo es Windows: los comandos se ejecutan con el Python del ent
     { "id": 2, "tasks": ["1.3", "1.5", "1.7", "1.8", "1.9", "4.1", "7.1", "8.1", "9.1"] },
     { "id": 3, "tasks": ["1.10", "1.11", "1.12", "2.2", "2.3", "3.2", "4.2", "5.1", "7.2", "7.3", "8.2", "9.2", "9.3"] },
     { "id": 4, "tasks": ["4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9", "4.10", "5.2", "5.3", "5.4", "5.5", "8.3", "8.4", "8.5", "8.6", "10.1"] },
-    { "id": 5, "tasks": ["8.7", "8.8", "10.2"] },
-    { "id": 6, "tasks": ["10.3", "10.4", "10.5", "10.6", "10.7", "10.8", "10.9", "12.1", "12.2"] },
+    { "id": 5, "tasks": ["4.11", "8.7", "8.8", "10.2"] },
+    { "id": 6, "tasks": ["4.12", "4.13", "4.14", "4.15", "10.3", "10.4", "10.5", "10.6", "10.7", "10.8", "10.9", "12.1", "12.2"] },
     { "id": 7, "tasks": ["10.10", "10.11", "12.3", "12.4", "12.5"] },
     { "id": 8, "tasks": ["12.6", "12.11"] },
     { "id": 9, "tasks": ["12.7", "12.8", "12.9", "12.10", "12.12", "14.1", "14.2", "14.3"] },

@@ -30,7 +30,7 @@ from werkzeug.exceptions import InternalServerError, NotFound, RequestEntityTooL
 from app import repository, security
 from app.config import ConfigError, Settings
 from app.formatting import format_eur
-from app.ocr import OcrEngine, TesseractOcrEngine
+from app.ocr import OcrEngine, TesseractOcrEngine, VisionModelOcrEngine
 from app.routes import entries as entries_routes
 from app.routes import health as health_routes
 from app.routes import images as images_routes
@@ -100,6 +100,29 @@ def _init_schema(db_path: Path) -> None:
         raise StartupError(db_path, str(exc)) from exc
 
 
+def _auto_detect_ocr_engine(timeout_s: int = 60) -> OcrEngine:
+    """Try Ollama first, fallback to Tesseract.
+    
+    Checks if Ollama API is reachable at 127.0.0.1:11434; if yes, use
+    VisionModelOcrEngine. Otherwise use TesseractOcrEngine (Req. 2.1, 2.2).
+    """
+    import requests
+    
+    try:
+        response = requests.get(
+            "http://127.0.0.1:11434/api/tags",
+            timeout=2,
+        )
+        if response.status_code == 200:
+            logger.info("Ollama API detected; using VisionModelOcrEngine")
+            return VisionModelOcrEngine(timeout_s=timeout_s)
+    except Exception as exc:
+        logger.debug("Ollama not reachable: %s; using Tesseract fallback", exc)
+    
+    logger.info("Using TesseractOcrEngine")
+    return TesseractOcrEngine(timeout_s=timeout_s)
+
+
 def _register_error_handlers(app: Flask, settings: Settings) -> None:
     @app.errorhandler(NotFound)
     def not_found(_error: NotFound) -> tuple[str, int]:
@@ -141,7 +164,7 @@ def create_app(
     engine: OcrEngine = (
         ocr_engine
         if ocr_engine is not None
-        else TesseractOcrEngine(timeout_s=settings.ocr_timeout_seconds)
+        else _auto_detect_ocr_engine(timeout_s=settings.ocr_timeout_seconds)
     )
     ttl = timedelta(hours=settings.draft_ttl_hours)
     store = ImageStore(settings.images_dir)

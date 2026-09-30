@@ -64,26 +64,35 @@ TAX_ID_RE = re.compile(
 )
 _TAX_ID_TRAILING_SEP = " \t-"
 
-# Invoice number (Req. 3.6): design regex, kept on one line (``[ \t]`` instead of ``\s``) and in
+# Invoice number (Req. 3.6, 3.11): design regex, kept on one line (``[ \t]`` instead of ``\s``) and in
 # ASCII mode so ``[A-Z0-9]`` cannot match look-alikes such as ``ſ`` or the Kelvin sign. ``no`` must
 # end the word, so ``"Invoice NO123"`` yields ``NO123`` and ``"Invoice No. 123"`` yields ``123``.
+# Also includes the bare "FACTURA <n>" header (Req. 3.11): "FACTURA" followed by a number
+# with at least 2 characters (digits, letters, slashes, hyphens, dots).
 INVOICE_NUMBER_RE = re.compile(
     r"\b(?:factura[ \t]*n\.?[º°o]?\.?"
     r"|n\.?[º°o]?\.?[ \t]*(?:de[ \t]*)?factura"
     r"|n[úÚu]mero[ \t]+de[ \t]+factura"
+    r"|factura(?:[ \t]+|[ \t]*[:#][ \t]*)"  # Require space after factura (without nº marker)
     r"|invoice(?:[ \t]*(?:no\b\.?|n[º°]|\#))?)"
     r"[ \t]*[:#]?[ \t]*(?P<number>[A-Z0-9][A-Z0-9/\-.]{0,29})",
     re.IGNORECASE | re.ASCII,
 )
 
-# "Fecha" label (Req. 3.2): the invoice date is the first valid date after it.
-DATE_LABEL_RE = re.compile(r"(?<!\w)fecha(?!\w)", re.IGNORECASE)
+# "Fecha" and "Fecha de venta" labels (Req. 3.2, 3.12): the invoice date is the first valid date after the label.
+DATE_LABEL_RE = re.compile(r"(?<!\w)(?:fecha(?:[ \t]+de[ \t]+venta)?|fecha de venta)(?!\w)", re.IGNORECASE)
 
-# Labels for base, VAT and total (Req. 3.5), already folded (lower case, no accents) and ordered
-# from the most specific to the most generic.
-BASE_LABELS = ("base imponible", "base")
-VAT_LABELS = ("cuota iva", "iva", "i.v.a.")
-TOTAL_LABELS = ("importe total", "total factura", "total a pagar", "total")
+# Labels for base, VAT and total (Req. 3.5, 3.14), already folded (lower case, no accents) and ordered
+# from the most specific to the most generic (specific before prefix).
+# Extended with additional synonyms for common Spanish invoice formats (Req. 3.14).
+BASE_LABELS = ("base imponible (eur)", "base imponible", "total si", "base")
+VAT_LABELS = (
+    "total iva/igic/ipsi", "total iva", "cuota iva", "cuota", "iva", "i.v.a.",
+)
+TOTAL_LABELS = (
+    "importe total (eur)", "importe total", "total factura", "total a pagar",
+    "total tii", "total (eur)", "total",
+)
 
 # A single amount token as accepted by ``parse_amount``: optional ``€`` before or after, optional
 # spaces, and one of: Spanish format with thousands dots and optional decimal comma
@@ -200,25 +209,103 @@ def find_tax_ids(text: str) -> list[str]:
 
 
 def find_labeled_amount(text: str, labels: Sequence[str]) -> Decimal | None:
-    """Return the first amount written after one of ``labels`` on the same line (Req. 3.5).
+    """Return the first amount written after one of ``labels`` (Req. 3.5, 3.13, 3.14).
 
     Labels are compared without case or accents and as whole words, so ``"total"`` never matches
-    ``"subtotal"``/``"sub-total"``. They are tried in the given order (most specific first); for
-    each label the lines are scanned top to bottom. Percentages such as ``21%`` are skipped.
+    ``"subtotal"``/``"sub-total"``. They are tried in the given order (most specific first).
+    
+    When a label appears on a line:
+    1. First, try to find an amount on the same line (after the label).
+    2. If no amount on the label line and the label is at the end of the line, search the next
+       non-empty line for the first valid amount (table format: Req. 3.13).
+       When the next line also has labels, extract amount after the same label (positional mapping).
+    
+    When searching table formats with "Tasa"/"percentage columns, the VAT amount is taken
+    from the "Total IVA..." column (more specific label), not from a "Tasa" percentage column.
+    Percentages such as ``21%`` are always skipped (Req. 3.14).
     """
-    lines = [_fold(line) for line in text.splitlines()]
+    lines = text.splitlines()
+    folded_lines = [_fold(line) for line in lines]
+    
+    # Keywords that commonly follow "total" but indicate a more specific label (not a generic total).
+    _TOTAL_SUFFIXES_TO_SKIP = (
+        "iva", "igic", "ipsi", "impuesto", "cuota",  # VAT suffixes
+        "si", "tii", "factura", "pagar",  # TOTAL compound labels
+        "a",  # "total a pagar" starts with "total a"
+    )
+    
     for label in labels:
         pattern = _LABEL_PATTERNS.get(label) or _label_regex(label)
         if pattern is None:
             continue
-        for line in lines:
+        
+        for idx, line in enumerate(folded_lines):
+            label_match = pattern.search(line)
+            if label_match is None:
+                continue
+            
+            # Skip if this "total" label is actually part of a longer label like "total iva"
+            # (when searching for the generic "total" label)
+            if label == "total" and label_match.end() < len(line):
+                # Check if the next word starts with a known suffix (e.g., "iva")
+                remaining = line[label_match.end():].lstrip()
+                if remaining and any(remaining.startswith(suffix) for suffix in _TOTAL_SUFFIXES_TO_SKIP):
+                    continue  # Skip this match, it's a more specific label
+            
+            # Try to find amount on the same line (after label)
             amount = _amount_after_label(line, pattern)
             if amount is not None:
                 return amount
+            
+            # No amount on label line. If the label is at the end of line (only whitespace after),
+            # look for the amount on the next non-empty line (table format: Req. 3.13).
+            label_end_pos = label_match.end()
+            after_label = line[label_end_pos:].strip()
+            
+            # If there's nothing significant after the label on the same line, check next line
+            if not after_label and idx + 1 < len(folded_lines):
+                # Check if next line also contains labels; if so, use it as a table row
+                next_idx = idx + 1
+                while next_idx < len(folded_lines):
+                    next_line = folded_lines[next_idx]
+                    if next_line.strip():
+                        # Next non-empty line found. Check if it also has labels (table format).
+                        has_label_in_next = False
+                        for check_label in labels:
+                            check_pattern = _LABEL_PATTERNS.get(check_label) or _label_regex(check_label)
+                            if check_pattern and check_pattern.search(next_line):
+                                has_label_in_next = True
+                                break
+                        
+                        if has_label_in_next:
+                            # Next line has labels. Try to find amount after the SAME label pattern
+                            # (positional mapping: if the label is in the next line, get amount after it).
+                            amount = _amount_after_label(next_line, pattern)
+                            if amount is not None:
+                                return amount
+                            # If same label not found in next line, take first amount
+                            amount = _first_amount_in_line(next_line)
+                            if amount is not None:
+                                return amount
+                        break
+                    next_idx += 1
+    
+    return None
+
+
+def _first_amount_in_line(line: str) -> Decimal | None:
+    """Return the first valid amount in ``line``, skipping percentages."""
+    for match in _LINE_AMOUNT_RE.finditer(line):
+        if match["pct"]:
+            continue
+        amount = parse_amount(match["num"])
+        if amount is not None:
+            return amount
     return None
 
 
 def _amount_after_label(line: str, pattern: re.Pattern[str]) -> Decimal | None:
+    """Return the first amount on ``line`` after a label match."""
     label = pattern.search(line)
     if label is None:
         return None
